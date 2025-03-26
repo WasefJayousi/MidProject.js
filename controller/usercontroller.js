@@ -1,7 +1,5 @@
 const {GetConnection} = require('../database/connection')
 
-
-
 exports.FavoriteCitites =  async (req,res,next) => {
     try {
       const userid = req.user 
