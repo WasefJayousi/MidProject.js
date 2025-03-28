@@ -1,4 +1,7 @@
 const bcrypt = require('bcrypt')
+const {GetConnection} = require('../database/connection')
+const jwt = require('jsonwebtoken')
+
 
 exports.register = async (req, res) => {
     const { username, email, password } = req.body;
@@ -9,8 +12,9 @@ exports.register = async (req, res) => {
 
     try {
         const hashedPassword = await bcrypt.hash(password, 10);
+        const db = GetConnection()
         const [result] = await db.query(
-            'INSERT INTO users (username, email, password) VALUES (?, ?, ?)', 
+            'INSERT INTO user (username, email, password) VALUES (?, ?, ?)', 
             [username, email, hashedPassword]
         );
         res.status(201).json({ userId: result.insertId, message: "User registered successfully" });
@@ -28,15 +32,14 @@ exports.login = async (req, res) => {
     }
 
     try {
-      
-        const [users] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
+        const db = GetConnection()
+        const [users] = await db.query('SELECT * FROM user WHERE email = ?', [email]);
         
         if (users.length === 0) {
             return res.status(401).json({ error: "Email or password incorrect" });
         }
 
         const user = users[0];
-
         // التحقق من كلمة المرور
         const validPassword = await bcrypt.compare(password, user.password);
         if (!validPassword) {
@@ -45,12 +48,10 @@ exports.login = async (req, res) => {
         const TOKEN_EXPIRY = '1h'
         const REFRESH_EXPIRY = '7d'
         // إنشاء التوكنات
-        const accessToken = jwt.sign({ id: user.id }, SECRET_KEY, { expiresIn: TOKEN_EXPIRY });
-        const refreshToken = jwt.sign({ id: user.id }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRY });
+        const accessToken = jwt.sign({ id: user.userid }, process.env.SECRET_KEY, { expiresIn: TOKEN_EXPIRY });
+        const refreshToken = jwt.sign({ id: user.userid }, process.env.REFRESH_SECRET, { expiresIn: REFRESH_EXPIRY });
 
-        refreshTokens.set(user.id, refreshToken);
-
-        res.json({ message: "Login successful", accessToken, refreshToken });
+        return res.status(200).json({ message: "Login successful", accessToken, refreshToken });
 
     } catch (error) {
         console.error("Login error:", error);
