@@ -37,6 +37,7 @@ exports.addcity = async(req, res,next) =>{
     try {
       const userid = req.user 
       const city = req.body.city
+      if(!city) return res.status(400).json({error:"no city provided to add"})
       const connection = GetConnection()
       const [result,fields] = await connection.query(`SELECT city FROM favorite WHERE userid = ? and city = ?` , [userid,city])
       if(result.length > 0) return res.status(200).json({error:"city already exists in you're database list!"})
@@ -59,6 +60,7 @@ exports.updatecity = async (req,res,next) => {
     try {
       const userid = req.user 
       const {oldcity,newcity} = req.body
+      if(!oldcity && !newcity) return res.status(400).json({error:"oldcity and newcity not provided!"})
       const connection = GetConnection()
 
       const [exists,f] = await connection.query(`SELECT city FROM favorite WHERE userid = ? and city = ?` , [userid,newcity])
@@ -82,6 +84,7 @@ exports.deletecity = async (req,res,next) => {
     try {
       const userid = req.user
       const city = req.body.city
+      if(!city) return res.status(400).json({message:"city not provided!"})
       const connection = GetConnection()
       const [result,fields] = await connection.query(`DELETE FROM favorite WHERE userid = ? and city = ?` , [userid,city])
       if(result.affectedRows === 0) return res.status(404).json({error:"City does not exist in db!"})
