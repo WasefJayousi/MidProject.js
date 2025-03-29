@@ -37,27 +37,41 @@ exports.addcity = async(req, res,next) =>{
     try {
       const userid = req.user 
       const city = req.body.city
-
+      const connection = GetConnection()
+      const [result,fields] = await connection.query(`SELECT city FROM favorite WHERE userid = ? and city = ?` , [userid,city])
+      if(result.length > 0) return res.status(200).json({error:"city already exists in you're database list!"})
+      
       const url = `http://api.openweathermap.org/data/2.5/weather?q=${city}&units=metric&appid=${process.env.weatherapikey}`;
       const response = await fetch(url)
       const weatherData = await response.json()
       if(weatherData.cod === '404') return res.status(404).json({error:"this city does not exist!"}) // if the user enters a wrong city meaning a city that doesn't exist , return error
 
-      const connection = GetConnection()
       await connection.query(`INSERT INTO favorite(userid,city) VALUES(?,?)` , [userid,city]) 
       return res.status(200).json({message:"favorite city added!"})
+
     } catch (error) {
       console.log(`error : ${error}`)
-      next(error)
-}}
+      next(error)}
+    }
+
 
 exports.updatecity = async (req,res,next) => {
     try {
       const userid = req.user 
       const {oldcity,newcity} = req.body
       const connection = GetConnection()
+
+      const [exists,f] = await connection.query(`SELECT city FROM favorite WHERE userid = ? and city = ?` , [userid,newcity])
+      if(exists.length > 0) return res.status(200).json({error:"city already exists in you're database list!"})
+
+      const url = `http://api.openweathermap.org/data/2.5/weather?q=${newcity}&units=metric&appid=${process.env.weatherapikey}`;
+      const response = await fetch(url)
+      const weatherData = await response.json()
+      if(weatherData.cod === '404') return res.status(404).json({error:"this city does not exist!"}) // if the user enters a wrong city meaning a city that doesn't exist , return error
+
       const [result,fields] = await connection.query(`UPDATE favorite SET city = ? WHERE userid = ? and city = ?` , [newcity,userid,oldcity]) 
       return res.status(200).json({message:"city updated"})
+
     } catch (error) {
       console.log(`error : ${error}`)
       next(error)
@@ -66,10 +80,11 @@ exports.updatecity = async (req,res,next) => {
 
 exports.deletecity = async (req,res,next) => {
     try {
-      const userid = req // req.idk still
-      const {city} = req.body.city
+      const userid = req.user
+      const city = req.body.city
       const connection = GetConnection()
-      const [result,fields] = await connection.query(`DELETE FROM favorite WHERE userid = ? and city = ?` , [userid,city]) 
+      const [result,fields] = await connection.query(`DELETE FROM favorite WHERE userid = ? and city = ?` , [userid,city])
+      if(result.affectedRows === 0) return res.status(404).json({error:"City does not exist in db!"})
       return res.status(200).json({message:"city updated"})
     } catch (error) {
       console.log(`error : ${error}`)

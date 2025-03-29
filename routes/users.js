@@ -13,9 +13,9 @@ router.get('/favoritecitylookup/:id' , authenticateToken,usercontroller.lookup)
 router.post('/addcity',authenticateToken, usercontroller.addcity);
 
 //update favorite city
-router.put('updatecity/:id',authenticateToken,usercontroller.updatecity)
+router.put('/updatecity',authenticateToken,usercontroller.updatecity)
 
 //delete favorite city
-router.delete('delete/:id' , authenticateToken , usercontroller.deletecity) 
+router.delete('/deletecity' , authenticateToken , usercontroller.deletecity) 
 
 module.exports = router;
