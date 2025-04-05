@@ -1,6 +1,5 @@
 const createError = require('http-errors');
 const express = require('express');
-const path = require('path');
 const cookieParser = require('cookie-parser');
 require('dotenv').config(); // using .env through process.env
 const connect = require('./database/connection');
@@ -9,17 +8,16 @@ const connect = require('./database/connection');
 connect.ConnectionToMySql()
 
 const authenticationRouter = require('./routes/authentication');
-const usersRouter = require('./routes/users');
+const usersRouter = require('./routes/weather');
 
 const app = express();
 
 
 app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
 app.use('/authentication', authenticationRouter);
-app.use('/users', usersRouter);
+app.use('/weather', usersRouter);
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {

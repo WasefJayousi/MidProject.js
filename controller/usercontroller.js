@@ -1,97 +1,283 @@
-const {GetConnection} = require('../database/connection')
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const connection = require('../database/connection');
+const { sendOTP } = require('../config/email');
 
-exports.FavoriteCitites =  async (req,res,next) => {
-    try {
-      const userid = req.user
-      const connection = GetConnection()
-      const [result,fields] = await connection.query(`SELECT city,id FROM favorite WHERE userid = ?` , [userid]) 
-      return res.status(200).json({cities : result[0]})
-    } catch (error) {
-      console.log(`error : ${error}`)
-      next(error)
+// const nodemailer = require('nodemailer');
+
+
+// const transporter = nodemailer.createTransport({
+//     service: 'gmail', // use gmail
+//     auth: {
+//         user: 'yazankamseh@gmail.com',  //my account
+//         pass: 'y j d d g r d b a t u j a r s u'  // my app password 
+//     }
+// });
+
+// // to send email
+// const sendEmail = async (to, subject, text) => {
+//     try {
+//         const mailOptions = {
+//             from: 'yazankamseh@gmail.com', 
+//             to: to,   //reseverrrrr
+//             subject: subject, 
+//             text: text  
+//         };
+
+//         const info = await transporter.sendMail(mailOptions);
+//         console.log('Email sent: ' + info.response);
+//     } catch (error) {
+//         console.error('Error sending email:', error);
+//     }
+// };
+
+//http://localhost:5000/api/users/verify-otp
+const verifyOTP = (req, res) => {
+    const { email, otp } = req.body;
+
+    connection.query('SELECT * FROM users WHERE email = ?', [email], (err, results) => {
+        if (results.length === 0) {
+            return res.status(400).json({ message: 'User not found' });
+        }
+
+        const user = results[0];
+
+        if (user.is_verified) {
+            return res.status(400).json({ message: 'Email already verified' });
+        }
+
+        if (user.otp_code !== otp) {
+            return res.status(400).json({ message: 'Invalid OTP' });
+        }
+
+        if (new Date(user.otp_expires) < new Date()) {
+            return res.status(400).json({ message: 'OTP expired' });
+        }
+
+        connection.query('UPDATE users SET is_verified = 1, otp_code = NULL, otp_expires = NULL WHERE email = ?', [email], (err) => {
+            if (err) return res.status(500).json({ message: 'Error verifying OTP' });
+
+            res.json({ message: 'Email verified successfully' });
+        });
+    });
+};
+
+
+
+
+
+
+
+//y j d d g r d b a t u j a r s u
+
+
+// register ----------http://localhost:5000/api/users/register
+const registerUser = (req, res) => {
+    const { name, email, password, phone, address } = req.body;
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();  
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000);  
+
+    connection.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
+        if (results.length > 0) {
+            return res.status(400).json({ message: 'Email already in use' });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+        connection.query(
+            'INSERT INTO users (name, email, password, phone, address, otp_code, otp_expires) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [name, email, hashedPassword, phone, address, otp, otpExpires],
+            async (err) => {
+                if (err) return res.status(500).json({ message: 'Error registering user' });
+
+                await sendOTP(email, otp);
+                res.status(201).json({ message: 'OTP sent. Please verify your email.' });
+            }
+        );
+    });
+};
+
+// login----------http://localhost:5000/api/users/login
+const loginUser = (req, res) => {
+    const { emailOrName, password } = req.body;
+
+    connection.query('SELECT * FROM users WHERE email = ? OR name = ?', [emailOrName, emailOrName], async (err, results) => {
+        if (err) return res.status(500).json({ message: 'Database error' });
+        if (results.length === 0 || !(await bcrypt.compare(password, results[0].password))) {
+            return res.status(401).json({ message: 'Invalid email, name, or password' });
+        }
+
+        if (!results[0].is_verified) {
+            return res.status(401).json({ message: 'Please verify your email first' });
+        }
+        const token = jwt.sign({ id: results[0].id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+
+        res.cookie('token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'Strict',
+            maxAge: 60 * 60 * 1000,
+        });
+
+        res.json({ message: 'Login successful', token });
+    });
+};
+//  Fetch User --------http://localhost:5000/api/users/profile
+const getUserProfile = (req, res) => {
+    connection.query('SELECT id, name, email, phone, address FROM users WHERE id = ?', [req.user.id], (err, results) => {
+        if (results.length === 0) return res.status(404).json({ message: 'User not found' });
+        res.json(results[0]);
+    });
+};
+
+// update profile-------------- http://localhost:5000/api/users/profile
+const updateUserProfile = (req, res) => {
+    const { name, phone, address, password } = req.body;
+    let fields = [];
+    let values = [];
+    let updatedFields = [];
+
+    if (name) {
+        fields.push("name = ?");
+        values.push(name);
+        updatedFields.push("name");
     }
-}
-
-exports.lookup = async (req,res,next) => {
-    try {
-      const userid = req.user 
-      const id = req.params.id
-      const connection = GetConnection()
-      
-      const [result,fields] = await connection.query(`SELECT city FROM favorite WHERE userid = ? and id = ? limit 1` , [userid,id]) 
-      if(!result) return res.status(404).json({error:"city not found!"})
-      const city = result[0].city
-
-      const url = `http://api.openweathermap.org/data/2.5/weather?q=${city}&units=metric&appid=${process.env.weatherapikey}`;
-      const response = await fetch(url)
-      const weatherData = await response.json()
-      const Weatherdetails = {temperature:weatherData.main.temp + ' °C' , humidity:weatherData.main.humidity + ' %' , speed:weatherData.wind.speed + " km/h" , description:weatherData.weather[0].description , detailedweather:weatherData}
-
-      return res.status(200).json({Weather : Weatherdetails}) //return res.status(200).json({Weather : weatherData}) // all data for now
-    } catch (error) {
-      console.log(`error : ${error}`)
-      next(error)
+    if (phone) {
+        fields.push("phone = ?");
+        values.push(phone);
+        updatedFields.push("phone");
     }
-}
-exports.addcity = async(req, res,next) =>{
-    try {
-      const userid = req.user 
-      const city = req.body.city
-      if(!city) return res.status(400).json({error:"no city provided to add"})
-      const connection = GetConnection()
-      const [result,fields] = await connection.query(`SELECT city FROM favorite WHERE userid = ? and city = ?` , [userid,city])
-      if(result.length > 0) return res.status(200).json({error:"city already exists in you're database list!"})
-      
-      const url = `http://api.openweathermap.org/data/2.5/weather?q=${city}&units=metric&appid=${process.env.weatherapikey}`;
-      const response = await fetch(url)
-      const weatherData = await response.json()
-      if(weatherData.cod === '404') return res.status(404).json({error:"this city does not exist!"}) // if the user enters a wrong city meaning a city that doesn't exist , return error
-
-      await connection.query(`INSERT INTO favorite(userid,city) VALUES(?,?)` , [userid,city]) 
-      return res.status(200).json({message:"favorite city added!"})
-
-    } catch (error) {
-      console.log(`error : ${error}`)
-      next(error)}
+    if (address) {
+        fields.push("address = ?");
+        values.push(address);
+        updatedFields.push("address");
     }
 
+    if (password) {
+        bcrypt.hash(password, 10, (err, hashedPassword) => {
+            if (err) return res.status(500).json({ message: "Error hashing password" });
 
-exports.updatecity = async (req,res,next) => {
-    try {
-      const userid = req.user 
-      const {oldcity,newcity} = req.body
-      if(!oldcity && !newcity) return res.status(400).json({error:"oldcity and newcity not provided!"})
-      const connection = GetConnection()
+            fields.push("password = ?");
+            values.push(hashedPassword);
+            updatedFields.push("password");
 
-      const [exists,f] = await connection.query(`SELECT city FROM favorite WHERE userid = ? and city = ?` , [userid,newcity])
-      if(exists.length > 0) return res.status(200).json({error:"city already exists in you're database list!"})
-
-      const url = `http://api.openweathermap.org/data/2.5/weather?q=${newcity}&units=metric&appid=${process.env.weatherapikey}`;
-      const response = await fetch(url)
-      const weatherData = await response.json()
-      if(weatherData.cod === '404') return res.status(404).json({error:"this city does not exist!"}) // if the user enters a wrong city meaning a city that doesn't exist , return error
-
-      const [result,fields] = await connection.query(`UPDATE favorite SET city = ? WHERE userid = ? and city = ?` , [newcity,userid,oldcity]) 
-      return res.status(200).json({message:"city updated"})
-
-    } catch (error) {
-      console.log(`error : ${error}`)
-      next(error)
+            executeUpdate(fields, values, updatedFields, req.user.id, res);
+        });
+    } else {
+        executeUpdate(fields, values, updatedFields, req.user.id, res);
     }
-  }
+};
 
-exports.deletecity = async (req,res,next) => {
-    try {
-      const userid = req.user
-      const city = req.body.city
-      if(!city) return res.status(400).json({message:"city not provided!"})
-      const connection = GetConnection()
-      const [result,fields] = await connection.query(`DELETE FROM favorite WHERE userid = ? and city = ?` , [userid,city])
-      if(result.affectedRows === 0) return res.status(404).json({error:"City does not exist in db!"})
-      return res.status(200).json({message:"city updated"})
-    } catch (error) {
-      console.log(`error : ${error}`)
-      next(error)
+const executeUpdate = (fields, values, updatedFields, userId, res) => {
+    if (fields.length === 0) {
+        return res.status(400).json({ message: "No fields to update" });
     }
-  }
-  
+
+    let sql = `UPDATE users SET ${fields.join(", ")} WHERE id = ?`;
+    values.push(userId);
+
+    connection.query(sql, values, (err) => {
+        if (err) return res.status(500).json({ message: "Error updating profile" });
+
+        res.json({
+            message: `Profile updated successfully`,
+            updatedFields: updatedFields
+        });
+    });
+};
+
+
+
+//delete user--------------http://localhost:5000/api/users/profile
+const deleteUser = (req, res) => {
+    connection.query('DELETE FROM users WHERE id = ?', [req.user.id], (err, results) => {
+        if (err) {
+            return res.status(500).json({ message: 'Error deleting user' });
+        }
+
+        res.clearCookie('token', {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'Strict',
+        });
+
+        res.json({ message: 'User deleted successfully' });
+    });
+};
+
+
+const logoutUser = (req, res) => {
+    res.clearCookie('token', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production', // Secure in production
+        sameSite: 'Strict',
+    });
+
+    res.json({ message: 'Logged out successfully' });
+};
+// Forgot Password - Request OTP
+const forgotPassword = (req, res) => {
+    const { email } = req.body;
+    const otp = Math.floor(100000 + Math.random() * 900000).toString(); 
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // صالح لمدة 10 دقائق
+
+    connection.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
+        if (results.length === 0) {
+            return res.status(400).json({ message: 'User not found' });
+        }
+
+        connection.query(
+            'UPDATE users SET otp_code = ?, otp_expires = ? WHERE email = ?',
+            [otp, otpExpires, email],
+            async (err) => {
+                if (err) return res.status(500).json({ message: 'Error generating OTP' });
+
+                await sendOTP(email, otp);
+                res.json({ message: 'OTP sent to your email. Please verify.' });
+            }
+        );
+    });
+};
+
+// Reset Password
+const resetPassword = (req, res) => {
+    const { email, otp, newPassword } = req.body;
+
+    connection.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
+        if (results.length === 0) {
+            return res.status(400).json({ message: 'User not found' });
+        }
+
+        const user = results[0];
+
+        if (user.otp_code !== otp) {
+            return res.status(400).json({ message: 'Invalid OTP' });
+        }
+
+        if (new Date(user.otp_expires) < new Date()) {
+            return res.status(400).json({ message: 'OTP expired' });
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        connection.query(
+            'UPDATE users SET password = ?, otp_code = NULL, otp_expires = NULL WHERE email = ?',
+            [hashedPassword, email],
+            (err) => {
+                if (err) return res.status(500).json({ message: 'Error resetting password' });
+
+                res.json({ message: 'Password reset successful. You can now log in.' });
+            }
+        );
+    });
+};
+
+
+
+module.exports = {
+    registerUser,
+    loginUser,
+    getUserProfile,
+    updateUserProfile,
+    deleteUser,  logoutUser,verifyOTP,forgotPassword,resetPassword
+
+};
