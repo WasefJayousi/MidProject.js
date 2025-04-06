@@ -4,7 +4,7 @@ const {
     loginUser,
     getUserProfile,
     updateUserProfile,
-    deleteUser,logoutUser ,verifyOTP,forgotPassword,resetPassword}  = require('../controllers/userController');
+    deleteUser,logoutUser ,verifyOTP,forgotPassword,resetPassword}  = require('../controller/userController');
 const { authenticateToken } = require('../config/verifytoken');
 
 const router = express.Router();

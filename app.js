@@ -7,8 +7,8 @@ const connect = require('./database/connection');
 //database connection
 connect.ConnectionToMySql()
 
-const authenticationRouter = require('./routes/authentication');
-const usersRouter = require('./routes/weather');
+const authenticationRouter = require('./routes/userRoutes');
+const usersRouter = require('./routes/weatherRoutes');
 
 const app = express();
 

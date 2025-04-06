@@ -1,6 +1,6 @@
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const connection = require('../database/connection');
+const {GetConnection} = require('../database/connection');
 const { sendOTP } = require('../config/email');
 
 // const nodemailer = require('nodemailer');
@@ -34,7 +34,7 @@ const { sendOTP } = require('../config/email');
 //http://localhost:5000/api/users/verify-otp
 const verifyOTP = (req, res) => {
     const { email, otp } = req.body;
-
+    const connection = GetConnection()
     connection.query('SELECT * FROM users WHERE email = ?', [email], (err, results) => {
         if (results.length === 0) {
             return res.status(400).json({ message: 'User not found' });
@@ -73,10 +73,12 @@ const verifyOTP = (req, res) => {
 
 // register ----------http://localhost:5000/api/users/register
 const registerUser = (req, res) => {
+    try {
     const { name, email, password, phone, address } = req.body;
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();  
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000);  
 
+    const connection = GetConnection()
     connection.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
         if (results.length > 0) {
             return res.status(400).json({ message: 'Email already in use' });
@@ -90,16 +92,21 @@ const registerUser = (req, res) => {
                 if (err) return res.status(500).json({ message: 'Error registering user' });
 
                 await sendOTP(email, otp);
-                res.status(201).json({ message: 'OTP sent. Please verify your email.' });
+                return res.status(201).json({ message: 'OTP sent. Please verify your email.' });
             }
         );
-    });
+    });   
+    } catch (error) {
+        console.log(error)
+        next(error)
+    }
 };
 
 // login----------http://localhost:5000/api/users/login
 const loginUser = (req, res) => {
     const { emailOrName, password } = req.body;
 
+    const connection = GetConnection()
     connection.query('SELECT * FROM users WHERE email = ? OR name = ?', [emailOrName, emailOrName], async (err, results) => {
         if (err) return res.status(500).json({ message: 'Database error' });
         if (results.length === 0 || !(await bcrypt.compare(password, results[0].password))) {
@@ -118,14 +125,15 @@ const loginUser = (req, res) => {
             maxAge: 60 * 60 * 1000,
         });
 
-        res.json({ message: 'Login successful', token });
+        return res.json({ message: 'Login successful', token });
     });
 };
 //  Fetch User --------http://localhost:5000/api/users/profile
 const getUserProfile = (req, res) => {
+    const connection = GetConnection()
     connection.query('SELECT id, name, email, phone, address FROM users WHERE id = ?', [req.user.id], (err, results) => {
         if (results.length === 0) return res.status(404).json({ message: 'User not found' });
-        res.json(results[0]);
+        return res.json(results[0]);
     });
 };
 
@@ -175,10 +183,11 @@ const executeUpdate = (fields, values, updatedFields, userId, res) => {
     let sql = `UPDATE users SET ${fields.join(", ")} WHERE id = ?`;
     values.push(userId);
 
+    const connection = GetConnection()
     connection.query(sql, values, (err) => {
         if (err) return res.status(500).json({ message: "Error updating profile" });
 
-        res.json({
+        return res.json({
             message: `Profile updated successfully`,
             updatedFields: updatedFields
         });
@@ -189,7 +198,8 @@ const executeUpdate = (fields, values, updatedFields, userId, res) => {
 
 //delete user--------------http://localhost:5000/api/users/profile
 const deleteUser = (req, res) => {
-    connection.query('DELETE FROM users WHERE id = ?', [req.user.id], (err, results) => {
+    const connection = GetConnection()
+    connection.query('DELETE FROM users WHERE userid = ?', [req.user.id], (err, results) => {
         if (err) {
             return res.status(500).json({ message: 'Error deleting user' });
         }
@@ -200,7 +210,7 @@ const deleteUser = (req, res) => {
             sameSite: 'Strict',
         });
 
-        res.json({ message: 'User deleted successfully' });
+        return res.json({ message: 'User deleted successfully' });
     });
 };
 
@@ -212,7 +222,7 @@ const logoutUser = (req, res) => {
         sameSite: 'Strict',
     });
 
-    res.json({ message: 'Logged out successfully' });
+    return res.json({ message: 'Logged out successfully' });
 };
 // Forgot Password - Request OTP
 const forgotPassword = (req, res) => {
@@ -220,6 +230,7 @@ const forgotPassword = (req, res) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString(); 
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // صالح لمدة 10 دقائق
 
+    const connection = GetConnection()
     connection.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
         if (results.length === 0) {
             return res.status(400).json({ message: 'User not found' });
@@ -232,7 +243,7 @@ const forgotPassword = (req, res) => {
                 if (err) return res.status(500).json({ message: 'Error generating OTP' });
 
                 await sendOTP(email, otp);
-                res.json({ message: 'OTP sent to your email. Please verify.' });
+                return res.json({ message: 'OTP sent to your email. Please verify.' });
             }
         );
     });
@@ -242,6 +253,7 @@ const forgotPassword = (req, res) => {
 const resetPassword = (req, res) => {
     const { email, otp, newPassword } = req.body;
 
+    const connection = GetConnection()
     connection.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
         if (results.length === 0) {
             return res.status(400).json({ message: 'User not found' });
@@ -265,7 +277,7 @@ const resetPassword = (req, res) => {
             (err) => {
                 if (err) return res.status(500).json({ message: 'Error resetting password' });
 
-                res.json({ message: 'Password reset successful. You can now log in.' });
+                return res.json({ message: 'Password reset successful. You can now log in.' });
             }
         );
     });
