@@ -137,67 +137,52 @@ const getUserProfile = async(req, res) => {
 };
 
 // update profile-------------- http://localhost:5000/api/users/profile
-const updateUserProfile = async(req, res) => {
+const updateUserProfile = async (req, res, next) => {
     try {
-    const { name, phone, address, password } = req.body;
-    let fields = [];
-    let values = [];
-    let updatedFields = [];
+        const { name, phone, address, password } = req.body;
+        const userId = req.user.id;
 
-    if (name) {
-        fields.push("name = ?");
-        values.push(name);
-        updatedFields.push("name");
-    }
-    if (phone) {
-        fields.push("phone = ?");
-        values.push(phone);
-        updatedFields.push("phone");
-    }
-    if (address) {
-        fields.push("address = ?");
-        values.push(address);
-        updatedFields.push("address");
-    }
+        let fields = [];
+        let values = [];
 
-    if (password) {
-        bcrypt.hash(password, 10, (err, hashedPassword) => {
-            if (err) return res.status(500).json({ message: "Error hashing password" });
+        if (name) {
+            fields.push("name = ?");
+            values.push(name);
+        }
 
+        if (phone) {
+            fields.push("phone = ?");
+            values.push(phone);
+        }
+
+        if (address) {
+            fields.push("address = ?");
+            values.push(address);
+        }
+
+        if (password) {
+            const hashedPassword = await bcrypt.hash(password, 10);
             fields.push("password = ?");
             values.push(hashedPassword);
-            updatedFields.push("password");
+        }
 
-            executeUpdate(fields, values, updatedFields, req.user.id, res);
-        });
-    } else {
-        executeUpdate(fields, values, updatedFields, req.user.id, res);
-    }   
+        if (fields.length === 0) {
+            return res.status(400).json({ message: "There is no field to update." });
+        }
+
+        const sql = `UPDATE users SET ${fields.join(", ")} WHERE id = ?`;
+        values.push(userId);
+
+        const connection = GetConnection();
+        await connection.query(sql, values);
+
+        res.json({ message: "Profile updated successfully." });
     } catch (error) {
-        console.log(error)
-        next(error)
+        console.error(error);
+        next(error);
     }
 };
 
-const executeUpdate = async(fields, values, updatedFields, userId, res) => {
-    try {
-    if (fields.length === 0) {
-        return res.status(400).json({ message: "No fields to update" });
-    }
-
-    let sql = `UPDATE users SET ${fields.join(", ")} WHERE id = ?`;
-    values.push(userId);
-
-    const connection = GetConnection()
-    await connection.query(sql, values)
-        return res.json({
-            message: `Profile updated successfully`,
-            updatedFields: updatedFields
-        });   
-    } catch (error) {
-        console.log(error)
-    }
-};
 
 
 
@@ -205,7 +190,7 @@ const executeUpdate = async(fields, values, updatedFields, userId, res) => {
 const deleteUser = async(req,res,next) => {
     try {
     const connection = GetConnection()
-    await connection.query('DELETE FROM users WHERE userid = ?', [req.user.id])
+    await connection.query('DELETE FROM users WHERE id = ?', [req.user.id])
         res.clearCookie('token', {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
@@ -234,34 +219,36 @@ const logoutUser = (req, res) => {
 
 };
 // Forgot Password - Request OTP
-const forgotPassword = async(req,res,next) => {
+const forgotPassword = async (req, res, next) => {
     try {
-    const { email } = req.body;
-    const otp = Math.floor(100000 + Math.random() * 900000).toString(); 
-    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // صالح لمدة 10 دقائق
+        const { email } = req.body;
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
-    const connection = GetConnection()
-    const [results] = await connection.query('SELECT * FROM users WHERE email = ?', [email])
+        const connection = GetConnection();
+        const [results] = await connection.query('SELECT * FROM users WHERE email = ?', [email]);
+
         if (results.length === 0) {
             return res.status(400).json({ message: 'User not found' });
         }
 
-        await connection.query('UPDATE users SET otp_code = ?, otp_expires = ? WHERE email = ?',[otp, otpExpires, email])
+        await connection.query('UPDATE users SET otp_code = ?, otp_expires = ? WHERE email = ?', [otp, otpExpires, email]);
         await sendOTP(email, otp);
+
         return res.json({ message: 'OTP sent to your email. Please verify.' });
     } catch (error) {
-        console.log(error)
-        next(error)
+        console.log(error);
+        next(error);
     }
 };
 
-// Reset Password
-const resetPassword = async(req, res) => {
+const resetPassword = async (req, res, next) => {
     try {
-    const { email, otp, newPassword } = req.body;
+        const { email, otp, newPassword } = req.body;
+        const connection = GetConnection();
 
-    const connection = GetConnection()
-    const [results] = await connection.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
+        const [results] = await connection.query('SELECT * FROM users WHERE email = ?', [email]);
+
         if (results.length === 0) {
             return res.status(400).json({ message: 'User not found' });
         }
@@ -278,13 +265,15 @@ const resetPassword = async(req, res) => {
 
         const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-        await connection.query('UPDATE users SET password = ?, otp_code = NULL, otp_expires = NULL WHERE email = ?',[hashedPassword, email])
+        await connection.query(
+            'UPDATE users SET password = ?, otp_code = NULL, otp_expires = NULL WHERE email = ?',
+            [hashedPassword, email]
+        );
 
         return res.json({ message: 'Password reset successful. You can now log in.' });
-    });   
     } catch (error) {
-     console.log(error)
-     next(error)   
+        console.log(error);
+        next(error);
     }
 };
 
