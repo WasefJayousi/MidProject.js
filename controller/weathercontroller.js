@@ -44,7 +44,7 @@ exports.lookup = async (req, res, next) => {
 
     const connection = GetConnection();
 
-    // البحث عن المدينة المفضلة لهذا المستخدم وهذا الـ id
+    
     const [result] = await connection.query(
       `SELECT city FROM favorite WHERE userid = ? AND id = ? LIMIT 1`,
       [userid, id]
@@ -56,12 +56,12 @@ exports.lookup = async (req, res, next) => {
 
     const city = result[0].city;
 
-    // استدعاء الطقس من API
+   
     const url = `http://api.openweathermap.org/data/2.5/weather?q=${city}&units=metric&appid=${process.env.weatherapikey}`;
     const response = await fetch(url);
     const weatherData = await response.json();
 
-    // التحقق إذا المدينة مش موجودة في API الطقس
+
     if (weatherData.cod === '404') {
       return res.status(404).json({ error: "This city does not exist in weather API!" });
     }
@@ -143,4 +143,4 @@ exports.deletecity = async (req,res,next) => {
       next(error)
     }
   }
-  
+      
