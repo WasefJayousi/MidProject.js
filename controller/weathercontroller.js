@@ -1,7 +1,4 @@
 const {GetConnection} = require('../database/connection')
-require("dotenv").config();
-
-
 
 exports.SearchCityWeather = async (req,res,next) => {
   try {
@@ -26,6 +23,7 @@ exports.SearchCityWeather = async (req,res,next) => {
 exports.FavoriteCitites =  async (req,res,next) => {
     try {
       const userid = req.user.id
+      if(!userid) return res.status(400).json({error:"user id not provided"})
       const connection = GetConnection()
       const [result,fields] = await connection.query(`SELECT city,id FROM favorite WHERE userid = ?` , [userid]) 
       return res.status(200).json({cities : result})
@@ -41,6 +39,7 @@ exports.lookup = async (req, res, next) => {
     const id = req.params.id;
 
     if (!id) return res.status(400).json({ error: "City ID not provided!" });
+    if(!userid) return res.status(400).json({error:"user id not provided"})
 
     const connection = GetConnection();
 
@@ -86,6 +85,7 @@ exports.addcity = async(req, res,next) =>{
       const userid = req.user.id 
       const city = req.body.city
       if(!city) return res.status(400).json({error:"no city provided to add"})
+      if(!userid) return res.status(400).json({error:"user id not provided"})
         
       const url = `http://api.openweathermap.org/data/2.5/weather?q=${city}&units=metric&appid=${process.env.weatherapikey}`;
       const response = await fetch(url)
@@ -109,6 +109,7 @@ exports.updatecity = async (req,res,next) => {
     try {
       const userid = req.user.id 
       const {oldcity,newcity} = req.body
+      if(!userid) return res.status(400).json({error:"user id not provided"})
       if(!oldcity && !newcity) return res.status(400).json({error:"oldcity and newcity not provided!"})
       const connection = GetConnection()
 
@@ -133,6 +134,7 @@ exports.deletecity = async (req,res,next) => {
     try {
       const userid = req.user.id
       const city = req.body.city
+      if(!userid) return res.status(400).json({error:"user id not provided"})
       if(!city) return res.status(400).json({message:"city not provided!"})
       const connection = GetConnection()
       const [result,fields] = await connection.query(`DELETE FROM favorite WHERE userid = ? and city = ?` , [userid,city])
